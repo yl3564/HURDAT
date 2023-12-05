@@ -1,0 +1,26 @@
+Package: HURDAT
+Type: Package
+Title: Atlantic Hurricane Analysis for R
+Version: 0.1.0
+Authors: person("Yuxin Liu", "Yuhui Zhao", email = c("yl3564@cornell.edu","yz2834@cornell.edu"))
+Description: Functions to analyze Atlantic Hurricane. Data source:
+    \url{https://www.aoml.noaa.gov/hrd/hurdat/hurdat2.html}.
+License: GPL-2
+Encoding: UTF-8
+LazyData: true
+Imports:
+    httr,
+    utils,
+    stringr,
+    tidyr,
+    maps,
+    dplyr,
+    sp,
+    ggplot2
+RoxygenNote: 7.2.3
+Suggests: 
+    rmarkdown,
+    knitr,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr

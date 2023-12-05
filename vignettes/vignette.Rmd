@@ -1,0 +1,221 @@
+---
+title: "vignette"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(HURDAT)
+library(dplyr)
+library(maps)
+library(ggplot2)
+library(sp)
+```
+
+```{r}
+data("hurdat")
+getwd()
+```
+
+1.
+```{r}
+dat2020<-filter(hurdat,format(hurdat$Date,format="%Y")=="2020")
+id2020<-unique(dat2020$ID)
+dat2021<-filter(hurdat,format(hurdat$Date,format="%Y")=="2021")
+id2021<-unique(dat2021$ID)
+dat2022<-filter(hurdat,format(hurdat$Date,format="%Y")=="2022")
+id2022<-unique(dat2022$ID)
+storm_map(id2020)
+storm_map(id2021)
+storm_map(id2022)
+```
+
+2.
+```{r}
+# Obtain the ID of  Katrina (2005), Sandy (2012), Harvey (2017), and Ian (2022).
+Katrina<-filter(hurdat,hurdat$Name == "KATRINA" & format(hurdat$Date,format="%Y")=="2005")
+Sandy<-filter(hurdat,hurdat$Name == "SANDY" & format(hurdat$Date,format="%Y")=="2012")
+Harvey<-filter(hurdat,hurdat$Name == "HARVEY" & format(hurdat$Date,format="%Y")=="2017")
+Ian<-filter(hurdat,hurdat$Name == "IAN" & 
+              format(hurdat$Date,format="%Y")=="2022")
+Katrina.id<-Katrina$ID[1]
+Sandy.id<-Sandy$ID[1]
+Harvey.id<-Harvey$ID[1]
+Ian.id<-Ian$ID[1]
+
+# Check whether did they make landfall
+is.landfall(Katrina.id)
+is.landfall(Sandy.id)
+is.landfall(Harvey.id)
+is.landfall(Ian.id)
+## All four storms made landfall.
+
+# Plot the position and size of the four storms
+storm_map_size(Katrina.id)
+storm_map_size(Sandy.id)
+storm_map_size(Harvey.id)
+storm_map_size(Ian.id)
+
+# The size of th quadrant represents the size of the storm at the particular
+# position and the four colors represent the four directions. Based on the four
+# plot, we can see that Sandy had biggest quadrants when it made the second landfall.
+# Thurs, we considered the second landfall of Sandy is the strongest landfall.
+storm_map_size(Sandy.id)
+```
+
+
+3.
+```{r}
+group_hurdat<-group_by(hurdat,ID)
+hurdat_info<-summarize(group_hurdat,
+                       name=first(Name),
+                       ms=ifelse((F %in% is.na(Size))==F,max(Size),
+                                 max(Size,na.rm=T)),
+                       mp=ifelse((F %in% is.na(Pressure))==F,
+                                 min(Pressure),min(Pressure,na.rm=T)),
+                       lf=is.landfall(ID),
+                       ace=cyclone_energy(ID))
+colnames(hurdat_info)<-c("Storm ID","Storm Name","Maximum Wind Speed",
+                         "Minimum Pressure","Landfall","ACE")
+
+```
+
+
+4.
+```{r}
+# 1. Histogram of Storms in Monthly Frequency from 1851 to 2022
+# Based on the plot, we can see that most hurricane occurred in August
+group_hurdat<-group_by(hurdat,ID)
+hurdat_m<-summarize(group_hurdat,month=format(Date,format="%m")[1])
+hist(x=as.numeric(hurdat_m$month),xlab="Month",ylab="Counts",
+     main="Histogram of Storms in Monthly Frequency 
+                                          from 1851 to 2022")
+
+# 2. Yearly average accumulated cyclone energy
+all_id<-unique(hurdat$ID)
+ACE<-c()
+year<-substr(all_id,5,8)
+for (i in 1:length(all_id)) {
+  ACE[i]<-cyclone_energy(all_id[i])
+}
+ACE_dat<-data.frame(ID=all_id,Year=year,ACE)
+ACE_dat<-group_by(ACE_dat,Year) %>%
+         summarize(Year=Year[1],avg_ACE=mean(ACE))
+plot(ACE_dat,type="l",ylab="Average ACE",main="Yearly Average ACE")
+
+
+
+```
+
+
+5.
+```{r}
+all_id<-unique(hurdat$ID)
+year<-substr(all_id,5,8)
+landfall<-c()
+for (i in 1:length(all_id)) {
+  landfall[i]<-is.landfall(all_id[i])
+}
+landfall_dat<-data.frame(Year=year,Landfall=landfall)
+group_landfall<-group_by(landfall_dat,Year)
+landfall_dat<-summarize(group_landfall,count=n())
+
+# Method 1: Linear Regression
+fit1<-lm(count~c(1:172),landfall_dat)
+ggplot(landfall_dat)+
+  geom_line(mapping=aes(x=1:172,y=count))+
+  geom_line(mapping=aes(x=1:172,y=fit1$coefficients[1]+1:172*fit1$coefficients[2]),
+            color="red")+
+  scale_x_continuous(breaks=seq(1,172,by=20),labels=year[seq(1,172,by=20)])+
+  scale_y_continuous(breaks=seq(0,15,by=3))+
+  xlab("Year")+
+  ylab("Count")+
+  labs(title="Number of storms made landfall from 1851 to 2022",
+       caption="Red line is the linear regression of count to year.")+
+  theme_classic()
+# Based on the model, we think the number of landfalling hurricanes increasing over time.
+
+# Method 2: Time Series Model
+library(tseries)
+library(astsa)
+adf.test(landfall_dat$count) # The data is stationary
+acf(landfall_dat$count) # Decays slowly
+pacf(landfall_dat$count) # Cut-off after lag = 5
+# Fit ARIMA(5,0,0)
+sarima(landfall_dat$count,p=5,d=0,q=0)
+# The p-value for the estimated coefficients ar2, ar3 and ar4 are greater than 0.01,
+# we can not reject the null hypothesis that the estimated coefficients are equal
+# to 0, at the 1.
+# The p-value for the estimated coefficients ar1 and ar5 are smaller than 0.01,
+# we can reject the null hypothesis and consider the estimated coefficients are 
+# significant at 1% significant level. Both of the estimated coefficients are 
+# positive, so we can conclude that the number of landfalling hurricanes 
+# increasing over time.
+```
+
+
+6.
+```{r}
+hurdat_tro<-filter(hurdat,hurdat$Type %in% c("TD","TS","HU"))
+group_hurdat_tro<-group_by(hurdat_tro,ID)
+group_id<-summarize(group_hurdat_tro,
+                    Year=format(Date,format="%Y")[1],
+                    Size=mean(Size,na.rm=T))
+group_year<-group_by(group_id,Year)
+group_year<-summarize(group_year,
+                      Size=round(mean(Size,na.rm=T),2))
+plot(group_year$Size,type="l")
+
+size<-group_year$Size
+acf(size)
+pacf(size)
+
+library(fGarch)
+library(rugarch)
+arma.garch = ugarchspec(mean.model=list(armaOrder=c(3,0)),
+                        variance.model=list(garchOrder=c(0,1)),
+                        distribution.model = "norm")
+fit.garch = ugarchfit(data=size, spec=arma.garch)
+show(fit.garch)
+```
+
+
+7.
+```{r}
+all_id<-hurdat_m$ID
+landfall<-c()
+for (i in 1:length(all_id)) {
+  landfall[i]<-is.landfall(all_id[i])
+}
+landfall_dat<-data.frame(Month=hurdat_m$month,Landfall=landfall)
+filter(landfall_dat,Landfall==1)$Month %>%
+as.numeric() %>%
+hist(xlim=c(0,12),xlab="Month",ylab="Counts",
+     main="    Histogram of Storms Made Landfall 
+     in Monthly Frequency, from 1851 to 2022")
+
+```
+
+Claim: "August through October are considered the peak months during hurricane season." 
+
+Reference:
+https://www.policygenius.com/homeowners-insurance/when-is-hurricane-season-in-the-united-states/#:~:text=August%20through%20October%20are%20considered,storms%2C%20according%20to%20the%20NOAA.
+
+
+
+
+
+
+
+
+
